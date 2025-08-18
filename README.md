@@ -1,9 +1,11 @@
-# Texas Home Tour Scoring (Streamlit) — minimal with photo preview
+# Texas Home Tour Scoring (Streamlit) — Final Categories + Mobile View
 
-- Essential categories only
-- Quick Summary table only (no per-home cards)
-- Photo link/preview in table (shows first URL or first uploaded image)
-- Edit/Delete buttons on each row
+**What’s included**
+- Final categories & criteria (weighted) exactly as you specified
+- Extra fields: City, MPC, Tax rate, MUD, PID, Restrictions, Yearly HOA, HOA Includes, ISP, Zoned Elementary & Middle
+- Photo links or uploaded preview
+- Mobile compact view toggle + full desktop table
+- Edit/Delete per row
 
 ## Run locally
 ```bash
