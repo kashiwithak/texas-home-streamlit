@@ -45,26 +45,34 @@ CRITERIA = [
 CATEGORIES = ["Environmental","Neighborhood","Community","Home","Builder","School","Vaastu"]
 
 # -----------------------------
-# PAGE CONFIG + MOBILE TWEAKS
+# PAGE CONFIG + STYLES
 # -----------------------------
-st.set_page_config(page_title="Texas Home Tour Scoring", layout="centered")
-st.title("🏡 Texas Home Tour Scoring (Streamlit)")
+st.set_page_config(page_title="Texas Home Tour Scoring", layout="wide")
+st.title("🏡 Texas Home Tour Scoring")
 
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1rem; padding-bottom: 3rem; }
-      .stButton>button { padding: 0.6rem 0.9rem; border-radius: 10px; }
-      label[data-baseweb="typography"] { font-size: 0.95rem; }
-      div[data-testid="stVerticalBlock"] p { margin-bottom: 0.25rem; }
-      img.thumb { max-height: 64px; border-radius: 6px; }
-      .notes-cell { white-space: normal; line-height: 1.2; }
-      .table-row { border-bottom: 1px solid #eee; padding: .2rem 0; }
+      .block-container { padding-top: .8rem; padding-bottom: 2rem; }
+      .stButton>button, .stDownloadButton>button { padding: 0.5rem 0.9rem; border-radius: 10px; }
+      /* Card grid */
+      .card { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid #e6e6e6; }
+      .thumb { width: 100%; height: 220px; object-fit: cover; display: block; }
+      @media (max-width: 768px) { .thumb { height: 160px; } }
+      .badge-score { position: absolute; left: 10px; top: 10px; background: rgba(0,0,0,.8); color: #fff; padding: 6px 10px; border-radius: 999px; font-size: 0.85rem; }
+      .badge-actions { position: absolute; right: 10px; top: 10px; display: flex; gap: 8px; }
+      .pill { background: rgba(255,255,255,.9); color: #111; padding: 6px 10px; border-radius: 999px; font-size: 0.85rem; border: 1px solid #ddd; text-decoration: none; }
+      .card-title { font-weight: 600; margin-top: .35rem; }
+      .card-sub { color: #666; font-size: .9rem; }
+      .link-reset { text-decoration: none; color: inherit; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+# -----------------------------
+# SESSION STATE
+# -----------------------------
 if "homes" not in st.session_state:
     st.session_state.homes = []
 if "edit_idx" not in st.session_state:
@@ -91,6 +99,21 @@ def vaastu_pass_count(scores):
 def overall_score(scores):
     return sum(scores.get(criterion_key(c_cat,name),0) * weight for (c_cat,name,weight) in CRITERIA)
 
+def make_thumb_src(info, photos_obj):
+    urls = info.get("photo_urls") or []
+    if urls:
+        return urls[0]
+    if photos_obj:
+        b = photos_obj[0]["bytes"]
+        b64 = base64.b64encode(b).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    # placeholder svg
+    svg = """<svg xmlns='http://www.w3.org/2000/svg' width='800' height='450'>
+      <rect width='100%' height='100%' fill='#f0f0f0'/>
+      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#888' font-size='24'>No Photo</text>
+    </svg>"""
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+
 def homes_dataframe(homes):
     rows = []
     for h in homes:
@@ -109,7 +132,7 @@ def homes_dataframe(homes):
             "Overall": overall_score(scores),
             "Notes": info.get("notes",""),
             "Photo": (info.get("photo_urls") or [""])[0],
-            # Cost & policy
+            # Policy/fees
             "PropertyTax": info.get("property_tax",""),
             "MUD": info.get("mud",""),
             "PID": info.get("pid",""),
@@ -133,7 +156,7 @@ def homes_dataframe(homes):
     return pd.DataFrame(rows)
 
 # -----------------------------
-# ADD / EDIT FORM
+# FORM BUILDER
 # -----------------------------
 def add_or_edit_form(edit_idx=None):
     is_edit = edit_idx is not None
@@ -195,193 +218,165 @@ def add_or_edit_form(edit_idx=None):
                 val = st.slider(f"{name} (Weight {weight})", 1, 5, default, key=f"{('e' if is_edit else 'a')}-{cat}-{name}")
                 scores[key] = val
 
-    if is_edit:
+    return {
+        "city": city, "community": community, "builder": builder, "address": address,
+        "property_tax": tax, "mud": mud, "pid": pid, "hoa": hoa,
+        "restrictions": restrictions, "hoa_includes": includes, "isp": isp,
+        "schoolElem": schoolElem, "schoolMiddle": schoolMiddle, "schoolHigh": schoolHigh,
+        "notes": notes, "photo_urls": [u.strip() for u in photo_urls_raw.split(",") if u.strip()],
+        "uploads": [{"name": f.name, "type": f.type, "bytes": f.getbuffer().tobytes()} for f in (uploads or [])],
+        "scores": scores,
+    }
+
+# -----------------------------
+# QUERY PARAMS & ACTIONS
+# -----------------------------
+qp = st.query_params
+view_idx = None
+if "view" in qp:
+    try:
+        view_idx = int(qp["view"][0] if isinstance(qp["view"], list) else qp["view"])
+    except:
+        view_idx = None
+
+# Handle delete action from query param
+if "delete" in qp:
+    try:
+        del_idx = int(qp["delete"][0] if isinstance(qp["delete"], list) else qp["delete"])
+        if 0 <= del_idx < len(st.session_state.homes):
+            st.session_state.homes.pop(del_idx)
+        # clear param
+        st.query_params.clear()
+        st.rerun()
+    except:
+        pass
+
+# If edit triggered via query param
+if "edit" in qp:
+    try:
+        ed_idx = int(qp["edit"][0] if isinstance(qp["edit"], list) else qp["edit"])
+        if 0 <= ed_idx < len(st.session_state.homes):
+            st.session_state.edit_idx = ed_idx
+        # switch to Input tab by clearing view
+        new_q = dict(st.query_params)
+        if "view" in new_q: del new_q["view"]
+        if "edit" in new_q: del new_q["edit"]
+        st.query_params.clear()
+        st.rerun()
+    except:
+        pass
+
+# -----------------------------
+# TABS
+# -----------------------------
+tab_input, tab_props = st.tabs(["➕ Input", "🏘️ Properties"])
+
+with tab_input:
+    st.markdown("Fill the form and assign scores.")
+    if st.session_state.edit_idx is not None:
+        st.info("Editing an existing home")
+        result = add_or_edit_form(st.session_state.edit_idx)
         c1, c2 = st.columns(2)
         if c1.button("Save changes"):
-            # Convert uploads to in-memory bytes
-            photo_blobs = st.session_state.homes[edit_idx].get("photos", [])
-            if uploads:
-                photo_blobs = [{"name": f.name, "type": f.type, "bytes": f.getbuffer().tobytes()} for f in uploads]
-            st.session_state.homes[edit_idx] = {
-                "info": {
-                    "city": city, "community": community, "builder": builder, "address": address,
-                    "property_tax": tax, "mud": mud, "pid": pid, "hoa": hoa,
-                    "restrictions": restrictions, "hoa_includes": includes, "isp": isp,
-                    "schoolElem": schoolElem, "schoolMiddle": schoolMiddle, "schoolHigh": schoolHigh,
-                    "notes": notes, "photo_urls": [u.strip() for u in photo_urls_raw.split(",") if u.strip()],
-                },
-                "photos": photo_blobs,
-                "scores": scores,
+            idx = st.session_state.edit_idx
+            st.session_state.homes[idx] = {
+                "info": {k: result[k] for k in ["city","community","builder","address","property_tax","mud","pid","hoa","restrictions","hoa_includes","isp","schoolElem","schoolMiddle","schoolHigh","notes","photo_urls"]},
+                "photos": result["uploads"],
+                "scores": result["scores"],
             }
-            st.session_state.edit_idx = None
             st.success("Saved changes")
+            st.session_state.edit_idx = None
             st.rerun()
         if c2.button("Cancel"):
             st.session_state.edit_idx = None
             st.rerun()
     else:
-        if st.form_submit_button("Add Home"):
-            photo_blobs = []
-            if uploads:
-                photo_blobs = [{"name": f.name, "type": f.type, "bytes": f.getbuffer().tobytes()} for f in uploads]
+        result = add_or_edit_form(None)
+        if st.button("Add Home"):
             st.session_state.homes.append({
-                "info": {
-                    "city": city, "community": community, "builder": builder, "address": address,
-                    "property_tax": tax, "mud": mud, "pid": pid, "hoa": hoa,
-                    "restrictions": restrictions, "hoa_includes": includes, "isp": isp,
-                    "schoolElem": schoolElem, "schoolMiddle": schoolMiddle, "schoolHigh": schoolHigh,
-                    "notes": notes, "photo_urls": [u.strip() for u in photo_urls_raw.split(",") if u.strip()],
-                },
-                "photos": photo_blobs,
-                "scores": scores,
+                "info": {k: result[k] for k in ["city","community","builder","address","property_tax","mud","pid","hoa","restrictions","hoa_includes","isp","schoolElem","schoolMiddle","schoolHigh","notes","photo_urls"]},
+                "photos": result["uploads"],
+                "scores": result["scores"],
             })
-            st.success(f"Added {address}")
+            st.success(f"Added {result['address']}")
 
-# -----------------------------
-# RENDER: Add or Edit
-# -----------------------------
-if st.session_state.edit_idx is not None:
-    add_or_edit_form(st.session_state.edit_idx)
-else:
-    # Use a container form for add; no experimental_rerun used anywhere
-    with st.form("add_form_container", clear_on_submit=False):
-        add_or_edit_form(None)
-
-st.markdown("---")
-
-# -----------------------------
-# SUMMARY TABLES
-# -----------------------------
-mode_mobile = st.toggle("📱 Mobile-friendly summary (compact)", value=True)
-
-def make_thumb_cell(info, photos_obj):
-    urls = info.get("photo_urls") or []
-    if urls:
-        return f"[View]({urls[0]})"
-    if photos_obj:
-        b = photos_obj[0]["bytes"]
-        b64 = base64.b64encode(b).decode("utf-8")
-        return f'![](data:image/png;base64,{b64})'
-    return "—"
-
-if st.session_state.homes:
-    st.subheader("Quick Summary")
-
-    if mode_mobile:
-        # Compact view
-        header_cols = st.columns([2.2,3,2,2.2,3,1.2,1.2])
-        header_cols[0].markdown("**City**")
-        header_cols[1].markdown("**MPC**")
-        header_cols[2].markdown("**Overall**")
-        header_cols[3].markdown("**Vaastu**")
-        header_cols[4].markdown("**Notes**")
-        header_cols[5].markdown("**Photo**")
-        header_cols[6].markdown("**⋯**")
-
-        for ridx, h in enumerate(st.session_state.homes):
-            info, scores = h["info"], h["scores"]
-            overall = overall_score(scores)
-            vcount = vaastu_pass_count(scores)
-            note_txt = (info.get("notes","") or "").strip()
-            if len(note_txt) > 60: note_txt = note_txt[:57] + "…"
-            row_cols = st.columns([2.2,3,2,2.2,3,1.2,1.2])
-            row_cols[0].write(info.get("city",""))
-            row_cols[1].write(info.get("community",""))
-            row_cols[2].write(overall)
-            row_cols[3].write(f"{vcount}/4")
-            row_cols[4].write(note_txt)
-            row_cols[5].markdown(make_thumb_cell(info, h.get("photos", [])))
-            e1, e2 = row_cols[6].columns(2)
-            if e1.button("✏️", key=f"m-edit-{ridx}"):
-                st.session_state.edit_idx = ridx
-                st.rerun()
-            if e2.button("🗑️", key=f"m-del-{ridx}"):
-                st.session_state.homes.pop(ridx)
-                st.rerun()
-
-        with st.expander("Show category subtotals"):
-            header_cols = st.columns([2,2,2,2,2,2,2,2,3])
-            header_cols[0].markdown("**City**")
-            header_cols[1].markdown("**MPC**")
-            header_cols[2].markdown("**Builder**")
-            header_cols[3].markdown("**Environmental**")
-            header_cols[4].markdown("**Neighborhood**")
-            header_cols[5].markdown("**Community**")
-            header_cols[6].markdown("**Home**")
-            header_cols[7].markdown("**School**")
-            header_cols[8].markdown("**Overall**")
-            for h in st.session_state.homes:
-                info, scores = h["info"], h["scores"]
-                row = st.columns([2,2,2,2,2,2,2,2,3])
-                row[0].write(info.get("city",""))
-                row[1].write(info.get("community",""))
-                row[2].write(info.get("builder",""))
-                row[3].write(category_subtotal(scores,"Environmental"))
-                row[4].write(category_subtotal(scores,"Neighborhood"))
-                row[5].write(category_subtotal(scores,"Community"))
-                row[6].write(category_subtotal(scores,"Home"))
-                row[7].write(category_subtotal(scores,"School"))
-                row[8].write(overall_score(scores))
-
+with tab_props:
+    # Airbnb-like grid or detail page
+    if view_idx is not None and 0 <= view_idx < len(st.session_state.homes):
+        # Detail page
+        h = st.session_state.homes[view_idx]
+        info, scores = h["info"], h["scores"]
+        st.markdown("#### 🏠 " + (info.get("address") or info.get("community") or "Home"))
+        # hero image
+        src = make_thumb_src(info, h.get("photos", []))
+        st.markdown(f"<img class='thumb' style='height:320px;border-radius:14px;' src='{src}'/>", unsafe_allow_html=True)
+        st.write(f"**City:** {info.get('city','')}  |  **MPC:** {info.get('community','')}  |  **Builder:** {info.get('builder','')}")
+        st.write(f"**Overall:** {overall_score(scores)}  |  **Vaastu:** {vaastu_pass_count(scores)}/4")
+        st.write(f"**Notes:** {info.get('notes','')}")
+        st.markdown("##### Scores by Category")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.write("**Environmental:**", category_subtotal(scores,"Environmental"))
+            st.write("**Neighborhood:**", category_subtotal(scores,"Neighborhood"))
+        with c2:
+            st.write("**Community:**", category_subtotal(scores,"Community"))
+            st.write("**Home:**", category_subtotal(scores,"Home"))
+        with c3:
+            st.write("**School:**", category_subtotal(scores,"School"))
+            st.write("**Builder:**", category_subtotal(scores,"Builder"))
+        st.markdown("---")
+        st.write("**Costs & Policies:**")
+        st.write(f"- Property Tax: {info.get('property_tax','')} | HOA (annual): {info.get('hoa','')}")
+        st.write(f"- MUD: {info.get('mud','')} | PID: {info.get('pid','')}")
+        st.write(f"- Restrictions: {info.get('restrictions','')}")
+        st.write("**HOA Includes:** " + ", ".join([k for k,v in (info.get('hoa_includes',{}) or {}).items() if v]) or "—")
+        st.write(f"**ISP:** {info.get('isp','')}")
+        st.write(f"**Zoned Schools:** {info.get('schoolElem','')} / {info.get('schoolMiddle','')} / {info.get('schoolHigh','')}")
+        st.link_button("⬅️ Back to Properties", url="./")
     else:
-        # Desktop/full view
-        header_cols = st.columns([2,2,2,2,2,2,2,2,2,2.2,3,1,1])
-        header_cols[0].markdown("**City**")
-        header_cols[1].markdown("**MPC**")
-        header_cols[2].markdown("**Builder**")
-        header_cols[3].markdown("**Environmental**")
-        header_cols[4].markdown("**Neighborhood**")
-        header_cols[5].markdown("**Community**")
-        header_cols[6].markdown("**Home**")
-        header_cols[7].markdown("**School**")
-        header_cols[8].markdown("**Builder Subtotal**")
-        header_cols[9].markdown("**Vaastu**")
-        header_cols[10].markdown("**Notes**")
-        header_cols[11].markdown("**Photo**")
-        header_cols[12].markdown("**⋯**")
+        st.markdown("### Your Properties")
+        # CSV download
+        if st.session_state.homes:
+            df = homes_dataframe(st.session_state.homes)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download Full Summary CSV", data=csv, file_name="home_summary.csv", mime="text/csv")
 
-        for ridx, h in enumerate(st.session_state.homes):
+        # Grid: 3 columns layout
+        cols_per_row = 3
+        for i, h in enumerate(st.session_state.homes):
+            if i % cols_per_row == 0:
+                row = st.columns(cols_per_row)
+            col = row[i % cols_per_row]
             info, scores = h["info"], h["scores"]
-            row_cols = st.columns([2,2,2,2,2,2,2,2,2,2.2,3,1,1])
-            row_cols[0].write(info.get("city",""))
-            row_cols[1].write(info.get("community",""))
-            row_cols[2].write(info.get("builder",""))
-            row_cols[3].write(category_subtotal(scores,"Environmental"))
-            row_cols[4].write(category_subtotal(scores,"Neighborhood"))
-            row_cols[5].write(category_subtotal(scores,"Community"))
-            row_cols[6].write(category_subtotal(scores,"Home"))
-            row_cols[7].write(category_subtotal(scores,"School"))
-            row_cols[8].write(category_subtotal(scores,"Builder"))
-            row_cols[9].write(f"{vaastu_pass_count(scores)}/4")
-            row_cols[10].write(info.get("notes",""))
-            # Photo cell
-            urls = info.get("photo_urls") or []
-            if urls:
-                row_cols[11].markdown(f"[View]({urls[0]})")
-            elif h.get("photos"):
-                b = h["photos"][0]["bytes"]
-                b64 = base64.b64encode(b).decode("utf-8")
-                row_cols[11].markdown(f'![](data:image/png;base64,{b64})')
-            else:
-                row_cols[11].write("—")
-            # Actions
-            e1, e2 = row_cols[12].columns(2)
-            if e1.button("✏️", key=f"d-edit-{ridx}"):
-                st.session_state.edit_idx = ridx
-                st.rerun()
-            if e2.button("🗑️", key=f"d-del-{ridx}"):
-                st.session_state.homes.pop(ridx)
-                st.rerun()
+            score = overall_score(scores)
+            src = make_thumb_src(info, h.get("photos", []))
 
-    st.markdown("---")
-    # ===== CSV Export Buttons =====
-    df = homes_dataframe(st.session_state.homes)
-    csv_all = df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Full Summary CSV", data=csv_all, file_name="home_summary.csv", mime="text/csv")
+            # Card with overlayed score + actions (using links w/ query params)
+            view_link = f"?view={i}"
+            edit_link = f"?edit={i}"
+            delete_link = f"?delete={i}"
+
+            with col:
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <a href="{view_link}"><img class="thumb" src="{src}" /></a>
+                      <div class="badge-score">{score}</div>
+                      <div class="badge-actions">
+                        <a class="pill" href="{edit_link}">✏️ Edit</a>
+                        <a class="pill" href="{delete_link}">🗑️ Delete</a>
+                      </div>
+                    </div>
+                    <div class="card-title">{info.get('address','(no name)')}</div>
+                    <div class="card-sub">{info.get('city','')} • {info.get('community','')} • {info.get('builder','')}</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 # -----------------------------
 # VAASTU QUICK REFERENCE
 # -----------------------------
+st.markdown("---")
 st.markdown("### 🧭 Vaastu Quick Reference")
 st.markdown("""
 **Primary (deal breakers):**
