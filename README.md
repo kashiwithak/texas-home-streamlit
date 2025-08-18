@@ -1,10 +1,9 @@
-# Texas Home Tour Scoring (Streamlit) — v4
+# Texas Home Tour Scoring (Streamlit) — minimal with photo preview
 
-**What's new**  
-- Photo uploads + external photo links per home  
-- Photo expander on each card (thumbnails + link buttons)  
-- Quick Summary table now includes a **Link** column (first photo URL)  
-- Sortable summary includes Link column and **Download CSV** button
+- Essential categories only
+- Quick Summary table only (no per-home cards)
+- Photo link/preview in table (shows first URL or first uploaded image)
+- Edit/Delete buttons on each row
 
 ## Run locally
 ```bash
