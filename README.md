@@ -1,2 +1,3 @@
-# Texas Home Tour Scoring App
-Run with `streamlit run streamlit_app.py`
+# Texas Home Tour Scoring (Streamlit)
+Run locally with `streamlit run streamlit_app.py`
+Deploy on Streamlit Cloud or GitHub.
