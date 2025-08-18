@@ -83,6 +83,11 @@ with st.form("add_home", clear_on_submit=True):
 
     notes = st.text_area("Notes")
 
+    # Photos: external links + uploads
+    photo_urls_raw = st.text_input("Photo URLs (comma-separated)", placeholder="https://photos.app..., https://drive.google.com/...")
+    uploads = st.file_uploader("Upload photos (optional)", type=["png","jpg","jpeg","webp"], accept_multiple_files=True)
+
+    # Scores
     scores = {}
     for cat in CATEGORIES:
         st.markdown(f"### {cat}")
@@ -94,6 +99,14 @@ with st.form("add_home", clear_on_submit=True):
         if not address.strip():
             st.warning("Please enter an address/nickname.")
         else:
+            # Normalize photos
+            url_list = [u.strip() for u in photo_urls_raw.split(",") if u.strip()] if photo_urls_raw else []
+            photo_blobs = []
+            for f in uploads or []:
+                try:
+                    photo_blobs.append({"name": f.name, "type": f.type, "bytes": f.getbuffer().tobytes()})
+                except Exception:
+                    pass
             st.session_state.homes.append({
                 "info": {
                     "address": address,
@@ -105,7 +118,9 @@ with st.form("add_home", clear_on_submit=True):
                     "schoolMiddle": schoolMiddle,
                     "schoolHigh": schoolHigh,
                     "notes": notes,
+                    "photo_urls": url_list,
                 },
+                "photos": photo_blobs,
                 "scores": scores,
             })
             st.success(f"Added {address}")
@@ -133,6 +148,17 @@ if st.session_state.homes:
         for i, cat in enumerate(CATEGORIES):
             with cols[i]:
                 st.metric(cat, categorySubtotal(scores, cat))
+        # Photo thumbnails / links
+        if (info.get("photo_urls") or h.get("photos")):
+            with st.expander("Photos", expanded=False):
+                if h.get("photos"):
+                    st.write("**Uploaded**")
+                    for p in h["photos"]:
+                        st.image(p["bytes"], caption=p.get("name","uploaded"), use_column_width=True)
+                if info.get("photo_urls"):
+                    st.write("**Links**")
+                    for iurl in info["photo_urls"]:
+                        st.link_button("Open photo", iurl, use_container_width=False)
         if info["notes"]:
             st.info(info["notes"])
         c1, c2 = st.columns(2)
@@ -144,30 +170,78 @@ if st.session_state.homes:
                 st.session_state.homes.pop(idx)
                 st.rerun()
 
-    # --- Quick Snapshot Table with Category Subtotals ---
-    st.subheader("Quick Snapshot (sortable table)")
-    rows = []
-    for h in st.session_state.homes:
+    # --- Quick Summary (City, Community, Builder + Scores + Link + Edit/Delete) ---
+    st.subheader("Quick Summary")
+    header_cols = st.columns([3,3,3,2,2,2,2,2,2,2,1,1])
+    header_cols[0].markdown("**City**")
+    header_cols[1].markdown("**Community**")
+    header_cols[2].markdown("**Builder**")
+    header_cols[3].markdown("**Environmental**")
+    header_cols[4].markdown("**Schools**")
+    header_cols[5].markdown("**Neighborhood**")
+    header_cols[6].markdown("**Community + Home**")
+    header_cols[7].markdown("**Builder**")
+    header_cols[8].markdown("**Overall**")
+    header_cols[9].markdown("**Link**")
+    header_cols[10].markdown("**✏️**")
+    header_cols[11].markdown("**🗑️**")
+
+    # Data for action rows and the sortable dataframe
+    summary_rows = []
+    for ridx, h in enumerate(st.session_state.homes):
         info = h["info"]
         scores = h["scores"]
-        row = {
-            "Address": info["address"],
-            "City": info.get("city", ""),
-            "Builder": info["builder"],
-            "Community": info["community"],
-            "Elementary": info["schoolElem"],
-            "Middle": info["schoolMiddle"],
-            "High": info["schoolHigh"],
-            "Environmental": categorySubtotal(scores, "Environmental"),
-            "Schools": categorySubtotal(scores, "Schools"),
-            "Neighborhood": categorySubtotal(scores, "Neighborhood"),
-            "Community + Home": categorySubtotal(scores, "Community + Home"),
-            "Builder Subtotal": categorySubtotal(scores, "Builder"),
-            "Overall": overallScore(scores),
-        }
-        rows.append(row)
-    snap_df = pd.DataFrame(rows)
-    st.dataframe(snap_df, use_container_width=True)
+        env = categorySubtotal(scores, "Environmental")
+        sch = categorySubtotal(scores, "Schools")
+        ngh = categorySubtotal(scores, "Neighborhood")
+        com = categorySubtotal(scores, "Community + Home")
+        bld = categorySubtotal(scores, "Builder")
+        ovl = overallScore(scores)
+        first_url = (info.get("photo_urls") or [None])[0]
+
+        # Row with action + link button
+        row_cols = st.columns([3,3,3,2,2,2,2,2,2,2,1,1])
+        row_cols[0].write(info.get("city", ""))
+        row_cols[1].write(info.get("community", ""))
+        row_cols[2].write(info.get("builder", ""))
+        row_cols[3].write(env)
+        row_cols[4].write(sch)
+        row_cols[5].write(ngh)
+        row_cols[6].write(com)
+        row_cols[7].write(bld)
+        row_cols[8].write(ovl)
+        if first_url:
+            row_cols[9].link_button("View", first_url)
+        else:
+            row_cols[9].write("—")
+        if row_cols[10].button("✏️", key=f"table-edit-{ridx}"):
+            st.session_state["edit_idx"] = ridx
+        if row_cols[11].button("🗑️", key=f"table-del-{ridx}"):
+            st.session_state.homes.pop(ridx)
+            st.rerun()
+
+        # Collect for sortable table / export
+        summary_rows.append({
+            "City": info.get("city",""),
+            "Community": info.get("community",""),
+            "Builder": info.get("builder",""),
+            "Environmental": env,
+            "Schools": sch,
+            "Neighborhood": ngh,
+            "Community + Home": com,
+            "Builder Subtotal": bld,
+            "Overall": ovl,
+            "Link": first_url or "",
+        })
+
+    st.markdown("---")
+    st.markdown("#### Sortable Summary (no actions)")
+    df = pd.DataFrame(summary_rows)
+    st.dataframe(df, use_container_width=True)
+
+    # Download snapshot CSV
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button("📥 Download Summary CSV", data=csv, file_name="home_summary.csv", mime="text/csv")
 
     # --- Edit selected home (inline form) ---
     if "edit_idx" in st.session_state:
@@ -220,7 +294,9 @@ if st.session_state.homes:
                                 "schoolMiddle": e_mid,
                                 "schoolHigh": e_high,
                                 "notes": e_notes,
+                                "photo_urls": e_info.get("photo_urls", []),
                             },
+                            "photos": h.get("photos", []),
                             "scores": e_scores,
                         }
                         del st.session_state["edit_idx"]
@@ -230,7 +306,5 @@ if st.session_state.homes:
                     if st.form_submit_button("Cancel"):
                         del st.session_state["edit_idx"]
                         st.rerun()
-        else:
-            del st.session_state["edit_idx"]
 else:
     st.info("No homes added yet. Use the form above.")
