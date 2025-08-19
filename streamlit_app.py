@@ -3,83 +3,121 @@ import pandas as pd
 
 st.set_page_config(page_title="Texas Home Tour Scoring", layout="wide")
 
-# Initialize session state
+# --- Session ---
 if "homes" not in st.session_state:
     st.session_state.homes = []
-if "view_idx" not in st.session_state:
-    st.session_state.view_idx = None
-if "edit_idx" not in st.session_state:
-    st.session_state.edit_idx = None
-
-# Dummy scoring function for now
-def calc_score(home):
-    return sum(val for val in home.get("scores", {}).values())
 
 # --- Tabs ---
-tab_input, tab_props = st.tabs(["➕ Input", "🏘️ Properties"])
+tab1, tab2 = st.tabs(["➕ Input", "🏘️ Properties"])
 
-with tab_input:
-    st.header("Add / Edit Home")
+# --------------------------------------------------
+# INPUT TAB
+# --------------------------------------------------
+with tab1:
+    st.title("🏡 Add / Edit Home")
+
     with st.form("add_home", clear_on_submit=True):
-        address = st.text_input("Address / Nickname*")
-        city = st.text_input("City")
-        builder = st.text_input("Builder")
-        community = st.text_input("Community")
-        notes = st.text_area("Notes")
-        photo_url = st.text_input("Main Photo URL")
-        submitted = st.form_submit_button("Save")
-        if submitted:
-            if not address.strip():
-                st.warning("Address required")
-            else:
-                home = {
-                    "address": address,
-                    "city": city,
-                    "builder": builder,
-                    "community": community,
-                    "notes": notes,
-                    "photo": photo_url,
-                    "scores": {"dummy": 5}, # placeholder
-                }
-                if st.session_state.edit_idx is not None:
-                    st.session_state.homes[st.session_state.edit_idx] = home
-                    st.session_state.edit_idx = None
-                else:
-                    st.session_state.homes.append(home)
-                st.success(f"Saved {address}")
+        c1, c2, c3, c4 = st.columns(4)
+        address = c1.text_input("Address / Nickname*")
+        city = c2.text_input("City")
+        builder = c3.text_input("Builder")
+        community = c4.text_input("Community")
 
-with tab_props:
-    st.header("Properties")
-    if st.session_state.view_idx is not None:
-        home = st.session_state.homes[st.session_state.view_idx]
-        st.subheader(home["address"])
-        st.image(home["photo"], width=400)
-        st.write(home)
-        if st.button("⬅ Back"):
-            st.session_state.view_idx = None
-            st.experimental_rerun()
+        c5, c6, c7, c8 = st.columns(4)
+        tax_rate = c5.text_input("Property Tax Rate")
+        mud = c6.text_input("MUD")
+        pid = c7.text_input("PID")
+        hoa_fee = c8.text_input("Yearly HOA")
+
+        st.markdown("**HOA Includes**")
+        c9, c10, c11, c12, c13, c14 = st.columns(6)
+        hoa_water = c9.checkbox("Water")
+        hoa_sewer = c10.checkbox("Sewer")
+        hoa_garbage = c11.checkbox("Garbage")
+        hoa_gas = c12.checkbox("Gas")
+        hoa_elec = c13.checkbox("Electric")
+        hoa_internet = c14.checkbox("Internet")
+
+        isp = st.text_input("ISP Provider")
+        elem = st.text_input("Zoned Elementary")
+        mid = st.text_input("Zoned Middle")
+        high = st.text_input("Zoned High")
+
+        notes = st.text_area("Notes")
+        photo_url = st.text_input("Photo URL (main image)", placeholder="https://...")
+
+        vaastu = st.checkbox("✅ Vaastu Pass")
+
+        # Scoring categories
+        st.subheader("Scores (1–5)")
+        def slider(label, w=1):
+            return st.slider(label, 1, 5, 3)
+        scores = {
+            "Environmental": slider("Environmental"),
+            "Neighborhood": slider("Neighborhood"),
+            "Community": slider("Community"),
+            "Home": slider("Home"),
+            "Builder": slider("Builder"),
+            "School": slider("School"),
+        }
+
+        if st.form_submit_button("Save Home"):
+            st.session_state.homes.append({
+                "address": address,
+                "city": city,
+                "builder": builder,
+                "community": community,
+                "tax_rate": tax_rate,
+                "mud": mud,
+                "pid": pid,
+                "hoa_fee": hoa_fee,
+                "hoa_includes": {
+                    "water": hoa_water,
+                    "sewer": hoa_sewer,
+                    "garbage": hoa_garbage,
+                    "gas": hoa_gas,
+                    "electric": hoa_elec,
+                    "internet": hoa_internet,
+                },
+                "isp": isp,
+                "elem": elem,
+                "mid": mid,
+                "high": high,
+                "notes": notes,
+                "photo_url": photo_url,
+                "vaastu": vaastu,
+                "scores": scores,
+            })
+            st.success(f"Added {address}")
+
+# --------------------------------------------------
+# PROPERTIES TAB
+# --------------------------------------------------
+with tab2:
+    st.title("🏘️ Properties")
+
+    if not st.session_state.homes:
+        st.info("No homes added yet.")
     else:
-        if not st.session_state.homes:
-            st.info("No homes yet")
-        else:
-            cols_per_row = 4
-            for i, home in enumerate(st.session_state.homes):
-                if i % cols_per_row == 0:
-                    cols = st.columns(cols_per_row)
-                with cols[i % cols_per_row]:
-                    score = calc_score(home)
-                    card_html = f"""
-                    <div style='position:relative; cursor:pointer; border:1px solid #ddd; border-radius:10px; overflow:hidden; margin:5px'>
-                        <img src='{home.get("photo","")}' style='width:100%; height:200px; object-fit:cover;'>
-                        <div style='position:absolute; top:5px; left:5px; background:#fff; padding:2px 6px; border-radius:5px; font-size:12px;'>Score: {score}</div>
-                        <div style='position:absolute; top:5px; right:35px; background:#007bff; color:#fff; padding:2px 6px; border-radius:5px; font-size:12px;'>✏️</div>
-                        <div style='position:absolute; top:5px; right:5px; background:#dc3545; color:#fff; padding:2px 6px; border-radius:5px; font-size:12px;'>🗑️</div>
-                        <div style='padding:5px'>
-                            <b>{home["city"]}</b><br>{home["community"]} - {home["builder"]}
-                        </div>
-                    </div>
-                    """
-                    if st.button(f"view_{i}"):
-                        st.session_state.view_idx = i
-                        st.experimental_rerun()
-                    st.markdown(card_html, unsafe_allow_html=True)
+        # Cards grid
+        for i, h in enumerate(st.session_state.homes):
+            with st.container():
+                c1, c2 = st.columns([1,3])
+                with c1:
+                    if h["photo_url"]:
+                        st.image(h["photo_url"], width=120)
+                    else:
+                        st.image("https://via.placeholder.com/120", width=120)
+                with c2:
+                    st.markdown(f"### {h['address']} ({h['city']})")
+                    st.write(f"🏗️ {h['builder']} | 🏘️ {h['community']}")
+                    st.write(f"**Total Score:** {sum(h['scores'].values())}/30")
+                    st.write(f"Notes: {h['notes']}")
+        # CSV Export
+        if st.button("⬇️ Export CSV"):
+            df = pd.DataFrame([{
+                **h,
+                **{f"score_{k}": v for k,v in h["scores"].items()}
+            } for h in st.session_state.homes])
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download CSV", csv, "homes.csv", "text/csv")
