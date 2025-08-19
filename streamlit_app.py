@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import base64
+from streamlit import components
 
 # =============================
 # CONFIG: criteria + weights
@@ -119,8 +120,6 @@ def homes_dataframe(homes):
     rows = []
     for h in homes:
         info, scores = h["info"], h["scores"]
-        mud_has = info.get("mud_has", False)
-        pid_has = info.get("pid_has", False)
         rows.append({
             "City": info.get("city",""),
             "MPC": info.get("community",""),
@@ -137,9 +136,9 @@ def homes_dataframe(homes):
             "Photo": (info.get("photo_urls") or [""])[0],
             # Tax/fees/policies
             "PropertyTax": info.get("property_tax",""),
-            "MUD": "Yes" if mud_has else "No",
+            "MUD": "Yes" if info.get("mud_has") else "No",
             "MUD_Details": info.get("mud_details",""),
-            "PID": "Yes" if pid_has else "No",
+            "PID": "Yes" if info.get("pid_has") else "No",
             "PID_Details": info.get("pid_details",""),
             "YearlyHOA": info.get("hoa",""),
             "Restrictions": info.get("restrictions",""),
@@ -361,30 +360,33 @@ with tab_props:
             st.download_button("📥 Download Full Summary CSV", data=df.to_csv(index=False).encode("utf-8"),
                                file_name="home_summary.csv", mime="text/csv")
 
-        cards = ["<div class='grid'>"]
+        # Build HTML without leading indentation; render via components.html to avoid markdown code-blocking
+        cards_html = "<div class='grid'>"
         for i, h in enumerate(st.session_state.homes):
             info, scores = h["info"], h["scores"]
             score = overall_score(scores)
             src = make_thumb_src(info, h.get("photos", []))
             title = info.get('address','(no name)')
             sub = f"{info.get('city','')} • {info.get('community','')} • {info.get('builder','')}"
-            cards.append(f"""
-            <div class="card-wrap">
-              <a class="cover-link" href="?view={i}"></a>
-              <div class="card">
-                <img class="thumb" src="{src}" />
-                <div class="badge-score">{score}</div>
-                <div class="badge-actions">
-                  <a class="pill" href="?edit={i}">✏️ Edit</a>
-                  <a class="pill" href="?delete={i}">🗑️ Delete</a>
-                </div>
-              </div>
-              <div class="card-title">{title}</div>
-              <div class="card-sub">{sub}</div>
-            </div>
-            """)
-        cards.append("</div>")
-        st.markdown("\n".join(cards), unsafe_allow_html=True)
+            cards_html += (
+                "<div class='card-wrap'>"
+                f"<a class='cover-link' href='?view={i}'></a>"
+                "<div class='card'>"
+                f"<img class='thumb' src='{src}' />"
+                f"<div class='badge-score'>{score}</div>"
+                "<div class='badge-actions'>"
+                f"<a class='pill' href='?edit={i}'>✏️ Edit</a>"
+                f"<a class='pill' href='?delete={i}'>🗑️ Delete</a>"
+                "</div>"
+                "</div>"
+                f"<div class='card-title'>{title}</div>"
+                f"<div class='card-sub'>{sub}</div>"
+                "</div>"
+            )
+        cards_html += "</div>"
+        rows = max(1, (len(st.session_state.homes) + 3) // 4)
+        height = min(1400, 320 + rows * 320)
+        components.v1.html(cards_html, height=height, scrolling=True)
 
 # =============================
 # VAASTU QUICK REFERENCE
